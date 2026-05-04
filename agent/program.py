@@ -20,7 +20,7 @@ class Agent:
         """
         self._color = color
         self._turn_count = 0
-        # initialise empty board state as string (each ".." is placeholder for {color, height})
+        # initialise empty board state as list of tuples (color,height)
         self._board = [(None, None) for _ in range(BOARD_N * BOARD_N)]
         match color:
             case PlayerColor.RED:
@@ -41,13 +41,8 @@ class Agent:
 
         # During placement phase (first 8 turns total, 4 per player)
         if self._turn_count < 4:
-            match self._color:
-                case PlayerColor.RED:
-                    print("Testing: RED is playing a PLACE action")
-                    return PlaceAction(Coord(0, self._turn_count))
-                case PlayerColor.BLUE:
-                    print("Testing: BLUE is playing a PLACE action")
-                    return PlaceAction(Coord(7, self._turn_count))
+            place_coord = find_place_position(self._board, self._color)
+            return PlaceAction(place_coord)
 
         # During play phase
         match self._color:
@@ -92,6 +87,85 @@ class Agent:
             case _:
                 raise ValueError(f"Unknown action type: {action}")
             
+def find_place_position(board: list, color: PlayerColor) -> Coord:
+    """
+    finds next strategically optimal position to place stack:
+    avoid placing on and next to opponent pieces, 
+    avoid placing in positions which can be immediately cascaded off, 
+    prefer non-edge positions
+    prefer positions which can immediately cascade opponent pieces off
+    prefer positions which are adjacent to an own piece which only has no neighbours
+    """
+
+    for r, c in coords_centre_out():
+        i = r * BOARD_N + c
+        piece = board[i]
+
+        # avoid placing on other pieces
+        if piece[0] is not None:
+            continue
+
+        # avoid placing next to opponent pieces
+        if is_adjacent_to_opponent(board, color, r, c):
+            continue
+
+        # avoid positions which can be immediately cascaded off
+        if can_be_cascaded_off(board, color, r, c):
+            continue
+
+        # prefer positions which can immediately cascade opponent pieces off
+
+        return Coord(r, c)
+
+def is_adjacent_to_opponent(board: list, color: PlayerColor, r: int, c: int) -> bool:
+    for direction in Direction:
+        adj_r = r + direction.r
+        adj_c = c + direction.c
+        if 0 <= adj_r < BOARD_N and 0 <= adj_c < BOARD_N:
+            adj_i = adj_r * BOARD_N + adj_c
+            adj_piece = board[adj_i]
+            if adj_piece[0] and adj_piece[0] != color:
+                return True
+    return False
+
+def can_be_cascaded_off(board: list, color: PlayerColor, r: int, c: int) -> bool:
+    for direction in Direction:
+        adj_r = r + direction.r
+        adj_c = c + direction.c
+        push_to_elim = distance_from_edge(r, c, direction) + 1
+        while 0 <= adj_r < BOARD_N and 0 <= adj_c < BOARD_N:
+            adj_i = adj_r * BOARD_N + adj_c
+            adj_piece = board[adj_i]
+            if adj_piece[0]:
+                if adj_piece[0] != color and adj_piece[1] >= push_to_elim:
+                    return True
+            else:
+                push_to_elim += 1 
+                    
+            adj_r = r + direction.r
+            adj_c = c + direction.c
+    return False
+
+def distance_from_edge(r: int, c: int, direction: Direction) -> int:
+    if direction == Direction.Down:
+        return BOARD_N - 1 - r
+    elif direction == Direction.Up:
+        return r
+    elif direction == Direction.Left:
+        return c
+    else:
+        return BOARD_N - 1 - c
+
+                    
+def coords_centre_out():
+    coords = []
+    centre = BOARD_N // 2
+    for r in range(BOARD_N):
+        for c in range(BOARD_N):
+            coords.append((r,c))
+    coords.sort(key=lambda x: (abs(x[0] - centre) + abs(x[1] - centre)))
+    return coords
+
 
 def make_cascade_action(board: list, coord: Coord, direction: Direction) -> None:
     """
